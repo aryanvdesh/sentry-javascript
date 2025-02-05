@@ -1,5 +1,9 @@
 import type { BrowserOptions } from '@sentry/browser';
-import { getDefaultIntegrations, setContext, initWithDefaultIntegrations as browserInitWithDefaultIntegrations } from '@sentry/browser';
+import {
+  getDefaultIntegrations,
+  initWithDefaultIntegrations as browserInitWithDefaultIntegrations,
+  setContext,
+} from '@sentry/browser';
 import type { Client, Integration } from '@sentry/core';
 import { applySdkMetadata } from '@sentry/core';
 

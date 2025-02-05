@@ -13,7 +13,7 @@ import type { Integration } from '@sentry/core';
 
 import type { BrowserOptions } from '../src';
 import { WINDOW } from '../src';
-import { applyDefaultOptions, getDefaultIntegrations, init } from '../src/sdk';
+import { applyDefaultOptions, init } from '../src/sdk';
 
 const PUBLIC_DSN = 'https://username@domain/123';
 

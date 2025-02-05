@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { BrowserClient } from '@sentry/browser';
 import {
   browserTracingIntegration,
   getActiveSpan,
@@ -9,7 +8,7 @@ import {
   getIsolationScope,
 } from '@sentry/browser';
 import * as SentryBrowser from '@sentry/browser';
-import { SDK_VERSION, getClient } from '@sentry/browser';
+import { SDK_VERSION } from '@sentry/browser';
 
 import { init } from '../../src/client/sdk';
 
