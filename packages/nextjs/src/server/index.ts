@@ -115,7 +115,6 @@ export function init(options: NodeOptions): NodeClient | undefined {
 
   const opts: NodeOptions = {
     environment: process.env.SENTRY_ENVIRONMENT || getVercelEnv(false) || process.env.NODE_ENV,
-    defaultIntegrations: customDefaultIntegrations,
     ...options,
   };
 
@@ -131,6 +130,8 @@ export function init(options: NodeOptions): NodeClient | undefined {
   }
 
   applySdkMetadata(opts, 'nextjs', ['nextjs', 'node']);
+
+  // TODO customDefaultINtegrations.
 
   const client = nodeInit(opts);
   client?.on('beforeSampling', ({ spanAttributes }, samplingDecision) => {

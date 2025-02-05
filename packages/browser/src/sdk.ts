@@ -47,9 +47,8 @@ export function getDefaultIntegrations(_options: Options): Integration[] {
 }
 
 /** Exported only for tests. */
-export function applyDefaultOptions(optionsArg: BrowserOptions = {}): BrowserOptions {
+export function applyDefaultOptions(optionsArg: BrowserOptions): BrowserOptions {
   const defaultOptions: BrowserOptions = {
-    defaultIntegrations: getDefaultIntegrations(optionsArg),
     release:
       typeof __SENTRY_RELEASE__ === 'string' // This allows build tooling to find-and-replace __SENTRY_RELEASE__ to inject a release value
         ? __SENTRY_RELEASE__
@@ -59,25 +58,8 @@ export function applyDefaultOptions(optionsArg: BrowserOptions = {}): BrowserOpt
 
   return {
     ...defaultOptions,
-    ...dropTopLevelUndefinedKeys(optionsArg),
+    ...optionsArg,
   };
-}
-
-/**
- * In contrast to the regular `dropUndefinedKeys` method,
- * this one does not deep-drop keys, but only on the top level.
- */
-function dropTopLevelUndefinedKeys<T extends object>(obj: T): Partial<T> {
-  const mutatetedObj: Partial<T> = {};
-
-  for (const k of Object.getOwnPropertyNames(obj)) {
-    const key = k as keyof T;
-    if (obj[key] !== undefined) {
-      mutatetedObj[key] = obj[key];
-    }
-  }
-
-  return mutatetedObj;
 }
 
 type ExtensionProperties = {
@@ -90,33 +72,6 @@ type Runtime = {
     id?: string;
   };
 };
-
-function shouldShowBrowserExtensionError(): boolean {
-  const windowWithMaybeExtension =
-    typeof WINDOW.window !== 'undefined' && (WINDOW as typeof WINDOW & ExtensionProperties);
-  if (!windowWithMaybeExtension) {
-    // No need to show the error if we're not in a browser window environment (e.g. service workers)
-    return false;
-  }
-
-  const extensionKey = windowWithMaybeExtension.chrome ? 'chrome' : 'browser';
-  const extensionObject = windowWithMaybeExtension[extensionKey];
-
-  const runtimeId = extensionObject?.runtime?.id;
-  const href = getLocationHref() || '';
-
-  const extensionProtocols = ['chrome-extension:', 'moz-extension:', 'ms-browser-extension:', 'safari-web-extension:'];
-
-  // Running the SDK in a dedicated extension page and calling Sentry.init is fine; no risk of data leakage
-  const isDedicatedExtensionPage =
-    !!runtimeId && WINDOW === WINDOW.top && extensionProtocols.some(protocol => href.startsWith(`${protocol}//`));
-
-  // Running the SDK in NW.js, which appears like a browser extension but isn't, is also fine
-  // see: https://github.com/getsentry/sentry-javascript/issues/12668
-  const isNWjs = typeof windowWithMaybeExtension.nw !== 'undefined';
-
-  return !!runtimeId && !isDedicatedExtensionPage && !isNWjs;
-}
 
 /**
  * A magic string that build tooling can leverage in order to inject a release value into the SDK.
@@ -170,7 +125,18 @@ declare const __SENTRY_RELEASE__: string | undefined;
  * @see {@link BrowserOptions} for documentation on configuration options.
  */
 export function init(browserOptions: BrowserOptions = {}): Client | undefined {
+  return initWithDefaultIntegrations(browserOptions, getDefaultIntegrations);
+}
+
+/**
+ * Initialize a browser client with the provided options and default integrations getter function.
+ */
+export function initWithDefaultIntegrations(
+  browserOptions: BrowserOptions = {},
+  getDefaultIntegrationsImpl: (options: BrowserOptions) => Integration[],
+): BrowserClient | undefined {
   const options = applyDefaultOptions(browserOptions);
+  const defaultIntegrations = getDefaultIntegrationsImpl(browserOptions);
 
   if (!options.skipBrowserExtensionCheck && shouldShowBrowserExtensionError()) {
     consoleSandbox(() => {
@@ -192,7 +158,7 @@ export function init(browserOptions: BrowserOptions = {}): Client | undefined {
   const clientOptions: BrowserClientOptions = {
     ...options,
     stackParser: stackParserFromStackParserOptions(options.stackParser || defaultStackParser),
-    integrations: getIntegrationsToSetup(options),
+    integrations: getIntegrationsToSetup(options, defaultIntegrations),
     transport: options.transport || makeFetchTransport,
   };
 
@@ -279,4 +245,31 @@ export function forceLoad(): void {
  */
 export function onLoad(callback: () => void): void {
   callback();
+}
+
+function shouldShowBrowserExtensionError(): boolean {
+  const windowWithMaybeExtension =
+    typeof WINDOW.window !== 'undefined' && (WINDOW as typeof WINDOW & ExtensionProperties);
+  if (!windowWithMaybeExtension) {
+    // No need to show the error if we're not in a browser window environment (e.g. service workers)
+    return false;
+  }
+
+  const extensionKey = windowWithMaybeExtension.chrome ? 'chrome' : 'browser';
+  const extensionObject = windowWithMaybeExtension[extensionKey];
+
+  const runtimeId = extensionObject?.runtime?.id;
+  const href = getLocationHref() || '';
+
+  const extensionProtocols = ['chrome-extension:', 'moz-extension:', 'ms-browser-extension:', 'safari-web-extension:'];
+
+  // Running the SDK in a dedicated extension page and calling Sentry.init is fine; no risk of data leakage
+  const isDedicatedExtensionPage =
+    !!runtimeId && WINDOW === WINDOW.top && extensionProtocols.some(protocol => href.startsWith(`${protocol}//`));
+
+  // Running the SDK in NW.js, which appears like a browser extension but isn't, is also fine
+  // see: https://github.com/getsentry/sentry-javascript/issues/12668
+  const isNWjs = typeof windowWithMaybeExtension.nw !== 'undefined';
+
+  return !!runtimeId && !isDedicatedExtensionPage && !isNWjs;
 }
