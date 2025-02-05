@@ -125,7 +125,26 @@ declare const __SENTRY_RELEASE__: string | undefined;
  * @see {@link BrowserOptions} for documentation on configuration options.
  */
 export function init(browserOptions: BrowserOptions = {}): Client | undefined {
-  return initWithDefaultIntegrations(browserOptions, getDefaultIntegrations);
+  // Note: If we call `initWithDefaultIntegrations()` here, webpack seems unable to tree-shake the DEBUG_BUILD usage inside of it
+  // So we duplicate the logic here like this to ensure maximum saved bytes
+  const options = applyDefaultOptions(browserOptions);
+  const defaultIntegrations = getDefaultIntegrations(browserOptions);
+
+  const showBrowserExtensionError = !options.skipBrowserExtensionCheck && shouldShowBrowserExtensionError();
+
+  if (DEBUG_BUILD) {
+    logBrowserEnvironmentWarnings({
+      browserExtension: showBrowserExtensionError,
+      fetch: !supportsFetch(),
+    });
+  }
+
+  if (showBrowserExtensionError) {
+    return;
+  }
+
+  const clientOptions = getClientOptions(options, defaultIntegrations);
+  return initAndBind(BrowserClient, clientOptions);
 }
 
 /**
@@ -138,30 +157,19 @@ export function initWithDefaultIntegrations(
   const options = applyDefaultOptions(browserOptions);
   const defaultIntegrations = getDefaultIntegrationsImpl(browserOptions);
 
-  if (!options.skipBrowserExtensionCheck && shouldShowBrowserExtensionError()) {
-    consoleSandbox(() => {
-      // eslint-disable-next-line no-console
-      console.error(
-        '[Sentry] You cannot run Sentry this way in a browser extension, check: https://docs.sentry.io/platforms/javascript/best-practices/browser-extensions/',
-      );
-    });
-    return;
-  }
+  const showBrowserExtensionError = !options.skipBrowserExtensionCheck && shouldShowBrowserExtensionError();
 
   if (DEBUG_BUILD) {
-    if (!supportsFetch()) {
-      logger.warn(
-        'No Fetch API detected. The Sentry SDK requires a Fetch API compatible environment to send events. Please add a Fetch API polyfill.',
-      );
-    }
+    logBrowserEnvironmentWarnings({
+      browserExtension: showBrowserExtensionError,
+      fetch: !supportsFetch(),
+    });
   }
-  const clientOptions: BrowserClientOptions = {
-    ...options,
-    stackParser: stackParserFromStackParserOptions(options.stackParser || defaultStackParser),
-    integrations: getIntegrationsToSetup(options, defaultIntegrations),
-    transport: options.transport || makeFetchTransport,
-  };
 
+  if (showBrowserExtensionError) {
+    return;
+  }
+  const clientOptions = getClientOptions(options, defaultIntegrations);
   return initAndBind(BrowserClient, clientOptions);
 }
 
@@ -272,4 +280,33 @@ function shouldShowBrowserExtensionError(): boolean {
   const isNWjs = typeof windowWithMaybeExtension.nw !== 'undefined';
 
   return !!runtimeId && !isDedicatedExtensionPage && !isNWjs;
+}
+
+function logBrowserEnvironmentWarnings({
+  fetch,
+  browserExtension,
+}: { fetch: boolean; browserExtension: boolean }): void {
+  if (browserExtension) {
+    consoleSandbox(() => {
+      // eslint-disable-next-line no-console
+      console.error(
+        '[Sentry] You cannot run Sentry this way in a browser extension, check: https://docs.sentry.io/platforms/javascript/best-practices/browser-extensions/',
+      );
+    });
+  }
+
+  if (fetch) {
+    logger.warn(
+      'No Fetch API detected. The Sentry SDK requires a Fetch API compatible environment to send events. Please add a Fetch API polyfill.',
+    );
+  }
+}
+
+function getClientOptions(options: BrowserOptions, defaultIntegrations: Integration[]): BrowserClientOptions {
+  return {
+    ...options,
+    stackParser: stackParserFromStackParserOptions(options.stackParser || defaultStackParser),
+    integrations: getIntegrationsToSetup(options, defaultIntegrations),
+    transport: options.transport || makeFetchTransport,
+  };
 }
